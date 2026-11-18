@@ -1,0 +1,4 @@
+// G15 Control BR - app.rc
+// Icone do aplicativo (ID 1). Gerado por tools\make-icon.ps1.
+// Compilado pelo build.ps1 a partir da raiz do projeto.
+1 ICON "res\\g15.ico"

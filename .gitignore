@@ -1,0 +1,24 @@
+# Build
+/build/
+/bin/
+/obj/
+*.obj
+*.exe
+*.pdb
+*.ilk
+*.idb
+*.exp
+*.lib
+*.res
+
+# Executaveis prontos para download (gerados por tools/make-dist.ps1)
+!/dist/*.exe
+
+# Visual Studio
+/.vs/
+*.user
+
+# Configuracoes locais gravadas ao lado do exe
+g15gui.ini
+g15ctl.ini
+imgui.ini
