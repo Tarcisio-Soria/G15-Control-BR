@@ -7,9 +7,27 @@ pesados: ventoinhas, modos térmicos, teclado RGB e monitoramento em um único `
 > **Projeto não oficial, sem relação com a Dell ou a Alienware.** Mexe em controle térmico
 > via BIOS: use com atenção à temperatura, sobretudo nos primeiros testes.
 
+## Capturas de tela
+
+Janela principal: medidores no topo, gráficos de histórico à esquerda e, à direita, os
+controles em abas (aqui, **Ventoinhas**: curva automática, base da GPU e boost por ventoinha).
+
+![Janela principal, aba Ventoinhas](docs/img/ventoinhas.png)
+
+Outras abas:
+
+| Modo Dell | Proteção térmica |
+|---|---|
+| ![Aba Modo Dell](docs/img/modo-dell.png) | ![Aba Proteção](docs/img/protecao.png) |
+| **Desempenho do Windows** | **Teclado RGB (prévia das 4 zonas)** |
+| ![Aba Windows](docs/img/windows.png) | ![Aba Teclado](docs/img/teclado.png) |
+
 ## Download (sem compilar)
 
-Os executáveis prontos estão na pasta [`dist/`](dist/):
+**Recomendado:** baixe na página de
+[**Releases**](https://github.com/Tarcisio-Soria/G15-Control-BR/releases/latest)
+(`g15gui.exe`, `g15ctl.exe` e `SHA256SUMS.txt`). Uma cópia dos mesmos arquivos fica na
+pasta [`dist/`](dist/) do repositório:
 
 | Arquivo | O que é |
 |---|---|
@@ -85,12 +103,43 @@ Medido no 5515 (detalhes em [`docs/NOTAS-5515.md`](docs/NOTAS-5515.md)):
 A curva (pontos temperatura → boost, intervalo e histerese) usa valores padrão. Para
 personalizar, crie `g15ctl.ini` ao lado do `.exe`; `g15ctl curve show` mostra o formato.
 
-## Licença e créditos
+## Tecnologias e sistemas usados
 
-- Licença: **GPL-3.0** (veja [`LICENSE`](LICENSE)).
-- [Dear ImGui](https://github.com/ocornut/imgui) (MIT), em `third_party/imgui`.
-- O funcionamento do protocolo da BIOS e do teclado foi estudado em projetos abertos:
-  [alienfx-tools](https://github.com/t-troll/alienfx-tools) (MIT) e outros controladores
-  livres para o G15. Veja `docs/NOTAS-5515.md`.
+| Área | O que é usado |
+|---|---|
+| Linguagem e build | C++17, **MSVC** (Build Tools for Visual Studio 2022), Windows SDK 10, `rc` para ícone e manifesto |
+| Interface | [**Dear ImGui**](https://github.com/ocornut/imgui) (MIT) com backends **Win32** e **DirectX 11**; desenho sob demanda |
+| Ventoinhas e modo térmico | **WMI** (`root\WMI`, classe `AWCCWmiMethodFunction`, métodos `Thermal_Information` e `Thermal_Control`), que chama a interface ACPI/WMI da BIOS Dell/Alienware, a mesma do AWCC |
+| Teclado RGB | **USB HID** (`hid.dll`, SetupAPI) falando o protocolo **ELC** do controlador `187C:0550`, por relatórios de 34 bytes |
+| GPU NVIDIA | [**NVML**](https://developer.nvidia.com/management-library-nvml) (`nvml.dll`, carregada dinamicamente: temperatura, uso, potência e clock) |
+| SSDs | **NVMe SMART** via `IOCTL_STORAGE_QUERY_PROPERTY` |
+| Energia do Windows | API de *power overlay* (`PowerSetActiveOverlayScheme`) |
+| Tecla G | `RegisterHotKey` (a tecla G do notebook chega como F17) |
+| Integração com o Windows | Ícone na bandeja, **Agendador de Tarefas** (iniciar com o Windows, elevado), TaskDialog (Common Controls v6), manifesto `requireAdministrator`, entrada em "Aplicativos instalados" |
+
+## Projetos de referência
+
+O protocolo da BIOS e do teclado foi estudado nestes projetos abertos, usados como
+documentação do funcionamento (mapa de métodos WMI, IDs de ventoinha e sensor, comandos
+do teclado). O código deste repositório foi escrito para este projeto; por termos nos
+baseado em projetos GPL, ele também é distribuído sob GPL-3.0:
+
+- [alienfx-tools](https://github.com/t-troll/alienfx-tools) (MIT): suíte Windows de iluminação e
+  ventoinhas; fonte dos IDs de zona do teclado.
+- [Dell-G-Series-Controller](https://github.com/cemkaya-mpi/Dell-G-Series-Controller) e
+  [Dell-G15-Controller](https://github.com/cemkaya-mpi/Dell-G15-Controller) (GPL-3.0): controle de
+  teclado e ventoinhas no Linux.
+- [tcc-g15 (the0cp)](https://github.com/the0cp/tcc-g15) e
+  [tcc-g15 (AlexIII)](https://github.com/AlexIII/tcc-g15) (GPL-3.0): *Thermal Control Center* para G15 no
+  Windows; origem da lógica de proteção térmica.
+- [Dell_G15_Fan_Cli](https://github.com/Mohit-Pala/Dell_G15_Fan_Cli) e
+  [dell-g15-fan-control](https://github.com/vishalrmahajan/dell-g15-fan-control): controle de
+  ventoinhas por linha de comando.
+
+Detalhes técnicos e medições no 5515 em [`docs/NOTAS-5515.md`](docs/NOTAS-5515.md).
+
+## Licença
+
+**GPL-3.0** (veja [`LICENSE`](LICENSE)). O Dear ImGui mantém a licença MIT dele.
 
 Autor: Tarcisio Soria — <https://www.linkedin.com/in/kknd/>
