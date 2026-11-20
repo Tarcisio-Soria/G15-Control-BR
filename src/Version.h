@@ -3,8 +3,8 @@
 // "Aplicativos instalados" do Windows. Ao lancar uma versao nova, mude apenas aqui.
 #pragma once
 
-#define G15_VERSION   "1.6"
-#define G15_VERSION_W L"1.6"
+#define G15_VERSION   "1.10"
+#define G15_VERSION_W L"1.10"
 
 // Dados mostrados na janela "Sobre".
 #define G15_AUTHOR    "Tarcisio Soria"

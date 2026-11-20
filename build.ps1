@@ -33,7 +33,7 @@ $imgui = if ($env:IMGUI_DIR) { $env:IMGUI_DIR } else { Join-Path $PSScriptRoot '
 if (Test-Path (Join-Path $imgui 'imgui.h')) {
     $ig = "`"$imgui\imgui.cpp`" `"$imgui\imgui_draw.cpp`" `"$imgui\imgui_tables.cpp`" `"$imgui\imgui_widgets.cpp`" " +
           "`"$imgui\backends\imgui_impl_win32.cpp`" `"$imgui\backends\imgui_impl_dx11.cpp`""
-    Invoke-Cl "/I`"$imgui`" /Fe:bin\g15gui.exe src\main_gui.cpp src\WinPower.cpp src\AutoStart.cpp src\Installer.cpp $core $ig obj\app.res $libs d3d11.lib dxgi.lib user32.lib shell32.lib gdi32.lib advapi32.lib /link /SUBSYSTEM:WINDOWS /MANIFEST:EMBED `"/MANIFESTUAC:level='requireAdministrator' uiAccess='false'`""
+    Invoke-Cl "/I`"$imgui`" /Fe:bin\g15gui.exe src\main_gui.cpp src\SysStats.cpp src\WinPower.cpp src\AutoStart.cpp src\Installer.cpp $core $ig obj\app.res $libs d3d11.lib dxgi.lib user32.lib shell32.lib gdi32.lib advapi32.lib /link /SUBSYSTEM:WINDOWS /MANIFEST:EMBED `"/MANIFESTUAC:level='requireAdministrator' uiAccess='false'`""
     Write-Host "OK: $bin\g15gui.exe"
 } else {
     Write-Warning "GUI nao compilada: Dear ImGui nao encontrado em '$imgui' (veja o topo deste script)."

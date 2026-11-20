@@ -42,6 +42,11 @@ Para conferir o download no PowerShell: `Get-FileHash g15gui.exe` e compare com 
 - Ele **não é assinado digitalmente**, então o Windows SmartScreen ou o antivírus podem alertar.
   O código-fonte completo está neste repositório e você pode compilar o seu (veja "Build").
 - Ele **pede Administrador**: ler e controlar as ventoinhas pela BIOS exige isso.
+- No Windows 11, o **Smart App Control** (se estiver ligado) pode **bloquear** o programa por ele
+  não ter assinatura digital nem reputação. O sintoma é o app simplesmente não abrir. Os eventos
+  ficam em "Integridade de Código" no Visualizador de Eventos. Desligar o Smart App Control é
+  decisão sua e não pode ser desfeita sem reinstalar o Windows; a alternativa é compilar e
+  assinar o seu próprio executável.
 - Ao abrir uma cópia não instalada, o app pergunta se deve instalar em
   `%ProgramFiles%\G15 Control BR` ou rodar em modo portátil. Nada é copiado sem você escolher.
 
@@ -53,8 +58,10 @@ Para conferir o download no PowerShell: `Get-FileHash g15gui.exe` e compare com 
 
 ## O que ele faz
 
-**Interface (`g15gui.exe`, Dear ImGui + DX11)** com gráficos de histórico (atualização a cada 2 s)
-e controles em abas:
+**Interface (`g15gui.exe`, Dear ImGui + DX11)** com 10 gráficos de histórico (~10 min, atualização
+a cada 2 s) em grade de 2 colunas por 5 linhas, sem rolagem: temperatura CPU/GPU, RPM das ventoinhas
+(escala fixa até 6000), uso e clock da CPU, uso e clock da GPU, memória RAM, potência da GPU
+(escala fixa até 100 W), bateria e boost das ventoinhas. À direita, os controles em abas:
 
 - **Ventoinhas:** RPM ao vivo, boost por ventoinha (0–255, 0 = automático do firmware),
   **controle automático pela curva** (ligado por padrão), ventoinha da GPU sempre girando

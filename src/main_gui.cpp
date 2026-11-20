@@ -26,6 +26,7 @@
 #include "FanCurve.h"
 #include "WinPower.h"
 #include "KbdElc.h"
+#include "SysStats.h"
 #include "AutoStart.h"
 #include "Installer.h"
 #include "Version.h"
@@ -236,6 +237,7 @@ struct Series {
 };
 struct History {
     Series cpuT, gpuT, gpuUse, gpuClk, gpuW, boostC, boostG, rpmC, rpmG;
+    Series cpuUse, cpuClk, ram, bat;      // sensores do sistema (SysStats)
 };
 
 struct FanRow { uint32_t id; const char* label; std::optional<uint32_t> maxRpm; std::optional<uint32_t> relTemp; std::optional<uint32_t> rpm; };
@@ -245,6 +247,7 @@ struct Snapshot {
     std::vector<NvmeDrive> ssds;
     std::vector<FanRow> fans;
     WinPower::Overlay winPerf = WinPower::Overlay::Unknown;
+    SysSnapshot sys;                       // CPU (uso/clock), RAM e bateria
 };
 struct Controls {
     bool autoCurve = false;
@@ -302,6 +305,7 @@ static void readSnapshot(AwccWmi& a, bool connected, GpuNvml& g, Snapshot& s) {
         s.gpuW = g.powerW(0); s.gpuMHz = g.clockMHz(0);
     }
     s.winPerf = WinPower::getOverlay();
+    SysStats::read(s.sys);
 }
 
 // Restaura as ventoinhas ao automatico (saida normal, logoff e desligamento).
@@ -400,6 +404,10 @@ static void pushHistory(History& h, const Snapshot& s, const Controls& ctrl) {
     if (s.gpuUtil) h.gpuUse.push((float)*s.gpuUtil);
     if (s.gpuMHz)  h.gpuClk.push((float)*s.gpuMHz);
     if (s.gpuW)    h.gpuW.push((float)*s.gpuW);
+    if (s.sys.cpuUse) h.cpuUse.push(*s.sys.cpuUse);
+    if (s.sys.cpuMHz) h.cpuClk.push((float)*s.sys.cpuMHz);
+    if (s.sys.ramTotalMB) h.ram.push(s.sys.ramPct);
+    if (s.sys.batPresent && s.sys.batPct >= 0) h.bat.push((float)s.sys.batPct);
     h.boostC.push(ctrl.boost[0] * 100.0f / 255.0f);
     h.boostG.push(ctrl.boost[1] * 100.0f / 255.0f);
     if (s.fans.size() > 0 && s.fans[0].rpm) h.rpmC.push((float)*s.fans[0].rpm);
@@ -415,6 +423,10 @@ static const ImU32 COL_CLK  = IM_COL32(90, 170, 245, 255);   // clock da GPU
 static const ImU32 COL_PWR  = IM_COL32(190, 130, 245, 255);  // potencia da GPU
 static const ImU32 COL_FANC = IM_COL32(70, 210, 230, 255);   // ventoinha da CPU
 static const ImU32 COL_FANG = IM_COL32(120, 180, 255, 255);  // ventoinha da GPU
+static const ImU32 COL_CUSE = IM_COL32(255, 130, 110, 255);  // uso da CPU
+static const ImU32 COL_CCLK = IM_COL32(255, 205, 110, 255);  // clock da CPU
+static const ImU32 COL_RAM  = IM_COL32(240, 130, 190, 255);  // memoria RAM
+static const ImU32 COL_BAT  = IM_COL32(150, 225, 100, 255);  // bateria
 static ImVec4 colV(ImU32 c) { return ImGui::ColorConvertU32ToFloat4(c); }
 
 static ImVec4 tempColor(int c) {
@@ -444,11 +456,12 @@ static void statTile(const char* name, const char* big, ImVec4 col, const char* 
 
 // ---- grafico de historico estilo Afterburner ------------------------------
 struct Plot { const Series* s; ImU32 col; };
+static float g_cardH = 0.0f;   // altura imposta pela grade de 2 colunas (0 = altura padrao)
 static void graphCard(const char* title, const char* unit, const char* valfmt,
                       const Plot* plots, int nplots, float vmin, float vmax, bool autoMax) {
     ImDrawList* dl = ImGui::GetWindowDrawList();
     float w = ImGui::GetContentRegionAvail().x;
-    float h = 86.0f * g_dpi;
+    float h = g_cardH > 0.0f ? g_cardH : 86.0f * g_dpi;
     ImVec2 p0 = ImGui::GetCursorScreenPos();
     ImVec2 p1 = ImVec2(p0.x + w, p0.y + h);
 
@@ -482,7 +495,7 @@ static void graphCard(const char* title, const char* unit, const char* valfmt,
     dl->AddText(ImVec2(p0.x + 9, p0.y + 6), IM_COL32(165, 172, 188, 255), title);
     // valores atuais (grande, a direita, cor de cada serie)
     float vx = p1.x - 10;
-    float fs = 21.0f * g_dpi;
+    float fs = (w < 330.0f * g_dpi ? 17.0f : 21.0f) * g_dpi;   // cartao estreito: numero um pouco menor
     for (int k = nplots - 1; k >= 0; k--) {
         char b[24]; snprintf(b, sizeof(b), valfmt, plots[k].s->last());
         ImVec2 ts = g_numFont->CalcTextSizeA(fs, FLT_MAX, 0.0f, b);
@@ -515,27 +528,44 @@ static void drawGraphs(History& h, const Snapshot& s) {
     ImGui::SameLine(); ImGui::TextColored(colV(COL_GPU), "GPU");
     ImGui::SameLine(0, 0); ImGui::TextDisabled(")");
 
-    Plot t[2] = { { &h.cpuT, CPU }, { &h.gpuT, GPU } };
-    graphCard("Temperatura  (CPU / GPU)", "C", "%.0f", t, 2, 30.0f, 100.0f, false);
+    // Escalas fixas (pedido do usuario): RPM ate 6000 (medido no 5515: o firmware satura em ~5800/5500;
+    // o "maximo" da BIOS, 4200/3900, nao e teto real) e potencia da GPU ate 100 W.
+    const float rpmMax = 6000.0f;
 
-    Plot u[1] = { { &h.gpuUse, USE } };
-    graphCard("GPU  -  uso", "%", "%.0f%%", u, 1, 0.0f, 100.0f, false);
+    // Cada linha da grade compara duas grandezas parecidas (CPU x GPU, temperatura x ventoinha).
+    struct Card { const char* title; const char* unit; const char* fmt; Plot p[2]; int n; float vmin, vmax; bool autoMax; };
+    std::vector<Card> cards = {
+        { "Temperatura  CPU / GPU", "C",   "%.0f",   { { &h.cpuT, CPU }, { &h.gpuT, GPU } },    2, 30.0f, 100.0f, false },
+        { "Ventoinhas  RPM",        "RPM", "%.0f",   { { &h.rpmC, FANC }, { &h.rpmG, FANG } },  2, 0.0f, rpmMax, false },
+        { "CPU  uso",               "%",   "%.0f%%", { { &h.cpuUse, COL_CUSE } },               1, 0.0f, 100.0f, false },
+        { "GPU  uso",               "%",   "%.0f%%", { { &h.gpuUse, USE } },                    1, 0.0f, 100.0f, false },
+        { "CPU  clock",             "MHz", "%.0f",   { { &h.cpuClk, COL_CCLK } },               1, 0.0f, 100.0f, true },
+        { "GPU  clock",             "MHz", "%.0f",   { { &h.gpuClk, CLK } },                    1, 0.0f, 100.0f, true },
+        { "Memoria RAM",            "%",   "%.0f%%", { { &h.ram, COL_RAM } },                   1, 0.0f, 100.0f, false },
+        { "GPU  potencia",          "W",   "%.0fW",  { { &h.gpuW, PWR } },                      1, 0.0f, 100.0f, false },
+    };
+    if (s.sys.batPresent) cards.push_back({ "Bateria", "%", "%.0f%%", { { &h.bat, COL_BAT } }, 1, 0.0f, 100.0f, false });
+    cards.push_back({ "Ventoinhas  boost", "%", "%.0f%%", { { &h.boostC, FANC }, { &h.boostG, FANG } }, 2, 0.0f, 100.0f, false });
 
-    Plot c[1] = { { &h.gpuClk, CLK } };
-    graphCard("GPU  -  clock", "MHz", "%.0f", c, 1, 0.0f, 100.0f, true);
-
-    Plot p[1] = { { &h.gpuW, PWR } };
-    graphCard("GPU  -  potencia", "W", "%.0fW", p, 1, 0.0f, 100.0f, true);
-
-    Plot f[2] = { { &h.boostC, FANC }, { &h.boostG, FANG } };
-    graphCard("Ventoinhas  -  boost (CPU / GPU)", "%", "%.0f%%", f, 2, 0.0f, 100.0f, false);
-
-    // RPM real. A BIOS informa um "maximo" (4200/3900 no 5515) que vale so para o modo normal:
-    // em G-Mode/boost alto as ventoinhas passam disso, entao a escala segue o maior valor ja visto.
-    float rpmMax = 4500.0f;
-    for (uint32_t pk : g_rpmPeak) if ((float)pk * 1.08f > rpmMax) rpmMax = (float)pk * 1.08f;
-    Plot r[2] = { { &h.rpmC, FANC }, { &h.rpmG, FANG } };
-    graphCard("Ventoinhas  -  RPM (CPU / GPU)", "RPM", "%.0f", r, 2, 0.0f, rpmMax, false);
+    // 2 colunas x 5 linhas sem rolagem: a altura de cada grafico se ajusta ao espaco livre.
+    // Janela estreita: 1 coluna, altura padrao (o painel rola).
+    const bool two  = ImGui::GetContentRegionAvail().x >= 520.0f * g_dpi;
+    const int  cols = two ? 2 : 1;
+    const int  rows = ((int)cards.size() + cols - 1) / cols;
+    g_cardH = 0.0f;
+    if (two) {
+        const ImGuiStyle& st = ImGui::GetStyle();
+        float overhead = 6.0f * g_dpi + st.ItemSpacing.y + st.CellPadding.y * 2.0f;
+        float fit = ImGui::GetContentRegionAvail().y / rows - overhead;
+        g_cardH = fit < 56.0f * g_dpi ? 56.0f * g_dpi : fit > 96.0f * g_dpi ? 96.0f * g_dpi : fit;
+    }
+    if (two && ImGui::BeginTable("graphgrid", 2, ImGuiTableFlags_SizingStretchSame | ImGuiTableFlags_NoSavedSettings)) {
+        for (const Card& c : cards) { ImGui::TableNextColumn(); graphCard(c.title, c.unit, c.fmt, c.p, c.n, c.vmin, c.vmax, c.autoMax); }
+        ImGui::EndTable();
+    } else {
+        for (const Card& c : cards) graphCard(c.title, c.unit, c.fmt, c.p, c.n, c.vmin, c.vmax, c.autoMax);
+    }
+    g_cardH = 0.0f;
 }
 
 // ---- Teclado RGB ------------------------------------------------------------
@@ -905,6 +935,8 @@ static void drawControls(Snapshot& s, bool connected, AwccWmi& a, Controls& ctrl
 
     if (g_tab == 5) drawKeyboard(g_kui);
     if (g_tab == 7) drawAboutContent();
+
+
 
     if (g_tab == 6) {
     if (g_isInstalled) {
